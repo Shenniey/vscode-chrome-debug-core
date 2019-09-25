@@ -5,7 +5,8 @@
 import { DebugProtocol } from 'vscode-debugprotocol';
 import { Handles } from 'vscode-debugadapter';
 import { IStackTraceResponseBody,
-    IInternalStackTraceResponseBody } from '../debugAdapterInterfaces';
+    IInternalStackTraceResponseBody,
+    IInternalStackFrame} from '../debugAdapterInterfaces';
 import { Protocol as Crdp } from 'devtools-protocol';
 import { Transformers } from './chromeDebugAdapter';
 import { ScriptContainer, Scripts } from './scripts';
@@ -26,7 +27,13 @@ export class StackFrames {
 
     private _frameHandles = new Handles<Crdp.Debugger.CallFrame>();
 
+    private _isVSClient = false;
+
     constructor() {}
+
+    public set isVSClient(newValue: boolean) {
+        this._isVSClient = newValue;
+    }
 
     /**
      * Clear the currently stored stack frames
@@ -88,6 +95,7 @@ export class StackFrames {
                 // TODO !isSourceMapped is a bit of a hack here
                 frame.source.origin = (frame.source.origin ? frame.source.origin + ' ' : '') + getSkipReason('smartStep');
                 (<any>frame).presentationHint = 'deemphasize';
+                (<any>frame).isVSExternal = true;
             }
 
             // Allow consumer to adjust final path
@@ -104,6 +112,10 @@ export class StackFrames {
 
         transformers.lineColTransformer.stackTraceResponse(stackTraceResponse);
         stackTraceResponse.stackFrames.forEach(frame => frame.name = this.formatStackFrameName(frame, args.format));
+
+        if (this._isVSClient && smartStepper.getSmartStepIsOn()) {
+            this.filterVSStackFrames(stackTraceResponse.stackFrames);
+        }
 
         return stackTraceResponse;
     }
@@ -243,6 +255,43 @@ export class StackFrames {
             url: frame.url,
             functionName: frame.functionName
         };
+    }
+
+    private formatVSExternalCodeFrame(): DebugProtocol.StackFrame {
+        return {
+            id: 2010,
+            name: '[ External Code ]',
+            line: 0,
+            column: 0,
+            presentationHint: 'label'
+        };
+    }
+
+    private filterVSStackFrames(stackframes: IInternalStackFrame[]): void {
+        let lastFrameNotMyCode = false;
+
+        for (let i = 0; i < stackframes.length; i++)
+        {
+            if ((<any>stackframes[i]).isVSExternal  == true || stackframes[i].presentationHint == 'label') // if it's "not my code"
+            {
+                stackframes.splice(i, 1);
+                i -= 1;
+                lastFrameNotMyCode = true;
+            }
+            else
+            {
+                if (lastFrameNotMyCode) // if last frame was not my code, then add external code frame
+                {
+                    stackframes.splice(i, 0, this.formatVSExternalCodeFrame());
+                    lastFrameNotMyCode = false;
+                }
+            }
+        }
+
+        if (lastFrameNotMyCode)
+        {
+            stackframes.push(this.formatVSExternalCodeFrame());
+        }
     }
 
     private formatStackFrameName(frame: DebugProtocol.StackFrame, formatArgs?: DebugProtocol.StackFrameFormat): string {

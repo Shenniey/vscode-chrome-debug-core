@@ -6,6 +6,14 @@ export class SmartStepper {
 
     constructor(private _enabled: boolean) {}
 
+    public setSmartStepEnable(enable: boolean) : void {
+        this._enabled = enable;
+    }
+
+    public getSmartStepIsOn() : boolean {
+        return this._enabled;
+    }
+
     public async shouldSmartStep(stackFrame: DebugProtocol.StackFrame, pathTransformer: BasePathTransformer, sourceMapTransformer: BaseSourceMapTransformer): Promise<boolean> {
         if (!this._enabled) return false;
 
@@ -13,6 +21,10 @@ export class SmartStepper {
         const mapping = await sourceMapTransformer.mapToAuthored(clientPath, stackFrame.line, stackFrame.column);
         if (mapping) {
             return false;
+        }
+
+        if (stackFrame.source.origin == "read-only core module" && !stackFrame.source.path.startsWith("file")) {
+            return true;
         }
 
         if ((await sourceMapTransformer.allSources(clientPath)).length) {

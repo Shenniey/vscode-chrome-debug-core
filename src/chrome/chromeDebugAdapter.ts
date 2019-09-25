@@ -222,6 +222,7 @@ export abstract class ChromeDebugAdapter implements IDebugAdapter {
         this._isVSClient = args.clientID === 'visualstudio';
         utils.setCaseSensitivePaths(!this._isVSClient);
         this.sourceMapTransformer.isVSClient = this._isVSClient;
+        this._stackFrames.isVSClient = this._isVSClient;
 
         if (args.pathFormat !== 'path') {
             throw errors.pathFormat();
